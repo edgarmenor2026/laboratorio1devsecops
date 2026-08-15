@@ -17,9 +17,19 @@ pipeline {
         
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([file(credentialsId: env.KUBECONFIG_ID, variable: 'KUBECONFIG')]) {
-                    sh 'kubectl apply -f k8s/deployment.yaml'
-                    sh 'kubectl apply -f k8s/service.yaml'
+                withCredentials([file(credentialsId: 'k8s-credentials', variable: 'KUBECONFIG')]) {
+                    sh '''
+                        echo "Verificando o instalando kubectl..."
+                        if ! command -v kubectl &> /dev/null; then
+                            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                            chmod +x kubectl
+                            mkdir -p ~/.local/bin
+                            mv kubectl ~/.local/bin/
+                            export PATH=$PATH:~/.local/bin/
+                        fi
+                        echo "Desplegando en Kubernetes..."
+                        kubectl apply -f k8s/deployment.yaml
+                    '''
                 }
             }
         }
