@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pandas
+spacy
+sentence-transformers
+scikit-learn
+textblob
+nltk
+langdetect
+googletrans==4.0.0-rc1

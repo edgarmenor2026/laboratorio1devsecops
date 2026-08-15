@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nlp-app-deployment
+  labels:
+    app: nlp-app
+spec:
+  replicas: 2 # Desplegará 2 instancias de tu app para alta disponibilidad
+  selector:
+    matchLabels:
+      app: nlp-app
+  template:
+    metadata:
+      labels:
+        app: nlp-app
+    spec:
+      containers:
+      - name: nlp-app-container
+        image: mi-app-nlp:latest # Aquí Jenkins o K8s inyectará tu imagen construida
+        ports:
+        - containerPort: 5000 # Cambia al puerto que use tu app.py (ej. 8000 para FastAPI)
+        resources:
+          # Esto es clave para que Prometheus y Grafana monitoreen adecuadamente:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
