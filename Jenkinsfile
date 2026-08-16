@@ -24,7 +24,7 @@ pipeline {
                 mkdir -p ~/.local/bin
                 mv kubectl ~/.local/bin/
                 export PATH=$PATH:~/.local/bin/
-    
+
                 echo "--- 2. Desplegando en Kubernetes de forma nativa ---"
                 # Al estar dentro del clúster, kubectl se autentica automáticamente sin kubeconfig
                 kubectl apply -f k8s/deployment.yaml
@@ -32,12 +32,15 @@ pipeline {
         }
     }        
     stage('Verify Deployment') {
-            steps {
-                withCredentials([file(credentialsId: env.KUBECONFIG_ID, variable: 'KUBECONFIG')]) {
-                    sh 'kubectl rollout status deployment/nlp-app-deployment'
-                    sh 'kubectl get pods -l app=nlp-app'
-                }
-            }
+        steps {
+            sh '''
+                echo "--- 3. Verificando el estado del despliegue ---"
+                    
+                # Volvemos a declarar la ruta en esta nueva etapa para que encuentre kubectl
+                export PATH=$PATH:~/.local/bin/
+                    
+                 kubectl rollout status deployment/nlp-app-deployment
+            '''
         }
     }
 }
