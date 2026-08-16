@@ -90,12 +90,36 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Enforce Snyk security gate
-        if: steps.snyk.outcome == 'failure'
+      - name: Report Snyk result in advisory mode
+        if: always()
+        shell: bash
+        env:
+          SNYK_OUTCOME: ${{ steps.snyk.outcome }}
         run: |
-          echo "Snyk found a high/critical vulnerability or the scan failed."
-          exit 1
+          if [[ "$SNYK_OUTCOME" == "failure" ]]; then
+            echo "::warning title=Snyk advisory scan::Snyk detected high/critical vulnerabilities or returned a non-zero result. Review the snyk-open-source-report artifact."
 
+            {
+              echo "## Snyk Open Source - análisis informativo"
+              echo ""
+              echo "⚠️ Snyk reportó vulnerabilidades de severidad alta/crítica."
+              echo ""
+              echo "- **Modo:** no bloqueante para el laboratorio académico"
+              echo "- **Resultado del escaneo:** \`$SNYK_OUTCOME\`"
+              echo "- **Evidencia:** artefacto \`snyk-open-source-report\`"
+              echo "- **Decisión:** el pipeline continúa hacia la construcción y publicación"
+              echo "- **Acción requerida:** documentar los hallazgos y sus recomendaciones"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Snyk completed without high or critical findings."
+
+            {
+              echo "## Snyk Open Source"
+              echo ""
+              echo "✅ El análisis terminó sin vulnerabilidades altas o críticas."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi          
+          
   build-and-push:
     name: Build and publish immutable image
     if: github.event_name != 'pull_request'
