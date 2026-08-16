@@ -19,33 +19,27 @@ pipeline {
                 echo "--- 1. Limpieza preventiva de espacio en disco ---"
                 docker system prune -f --all || true
 
-                echo "--- 2. Configurando Python local para el instalador de gcloud ---"
-                mkdir -p /home/jenkins/.local/bin
-                if ! command -v python &> /dev/null && command -v python3 &> /dev/null; then
-                    ln -sf $(which python3) /home/jenkins/.local/bin/python
-                fi
-                export PATH=/home/jenkins/.local/bin:$PATH
-                
-                echo "--- 3. Instalando gcloud CLI si no está presente ---"
+                echo "--- 2. Instalando gcloud CLI mediante tarball (sin dependencias externas) ---"
                 if ! command -v gcloud &> /dev/null; then
-                    curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts
+                    curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz
+                    tar -xzf google-cloud-cli-linux-x86_64.tar.gz
                 fi
                 
                 # Añadir gcloud al PATH de la sesión actual
-                export PATH=$PATH:/home/jenkins/google-cloud-sdk/bin                
-                
-                echo "--- 4. Configurando Docker para Google Artifact Registry ---"
+                export PATH=$PATH:$(pwd)/google-cloud-sdk/bin
+
+                echo "--- 3. Configurando Docker para Google Artifact Registry ---"
                 gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
                 
-                echo "--- 5. Construyendo la imagen de Docker ---"
+                echo "--- 4. Construyendo la imagen de Docker ---"
                 export IMAGE_TAG="us-central1-docker.pkg.dev/laboratorio1devsecops/repo-nlp/mi-app-nlp:latest"
                 docker build -t $IMAGE_TAG .
                 
-                echo "--- 6. Subiendo la imagen al repositorio ---"
+                echo "--- 5. Subiendo la imagen al repositorio ---"
                 docker push $IMAGE_TAG
 
-                echo "--- 7. Limpieza posterior para liberar almacenamiento efímero ---"
-                docker system prune -f --all                
+                echo "--- 6. Limpieza posterior para liberar almacenamiento efímero ---"
+                docker system prune -f --all
                 '''
             }
         }
