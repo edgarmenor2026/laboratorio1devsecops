@@ -1,176 +1,285 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-import pandas as pd
-import spacy
-from sentence_transformers import SentenceTransformer
-from sklearn.neural_network import MLPClassifier
-from textblob import TextBlob
-import numpy as np
+from __future__ import annotations
+
+import json
 import logging
-import warnings
+import os
+import re
+import time
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
+
+import joblib
+import numpy as np
+import spacy
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-import nltk
+from langdetect import detect
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
-from langdetect import detect  # Nueva dependencia
-from googletrans import Translator # Para apoyo en sentimiento multilingüe
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
+from pydantic import BaseModel, Field
+from sentence_transformers import SentenceTransformer
 
-warnings.filterwarnings('ignore')
-nltk.download('vader_lexicon', quiet=True)
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+LOG = logging.getLogger("nlp-api")
 
-# 1. DEFINICIÓN DE MOTORES DE IA (Arquitectura Multilingüe)
+SENTENCE_MODEL = os.getenv(
+    "SENTENCE_MODEL",
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+)
+MODEL_PATH = Path(os.getenv("APP_MODEL_PATH", "/app/model/classifier.joblib"))
+MODEL_METADATA_PATH = Path(os.getenv("APP_MODEL_METADATA_PATH", "/app/model/metadata.json"))
+
+REQUESTS = Counter(
+    "nlp_http_requests_total",
+    "HTTP requests processed by the NLP API",
+    ["method", "path", "status"],
+)
+REQUEST_DURATION = Histogram(
+    "nlp_http_request_duration_seconds",
+    "HTTP request latency for the NLP API",
+    ["method", "path"],
+)
+ANALYSES = Counter(
+    "nlp_analyses_total",
+    "Complaint analyses completed",
+    ["language", "sentiment"],
+)
+MODEL_READY = Gauge("nlp_model_ready", "1 when the NLP model is loaded")
+MODEL_LOAD_SECONDS = Gauge("nlp_model_load_seconds", "Seconds required to load the NLP pipeline")
+
+SPANISH_POSITIVE = {
+    "bien", "bueno", "correcto", "excelente", "gracias", "resuelto", "solucionado", "satisfecho"
+}
+SPANISH_NEGATIVE = {
+    "mal", "malo", "fraude", "error", "cobro", "incumplimiento", "problema", "queja",
+    "reclamo", "negado", "rechazado", "injusto", "demora", "deuda", "acosado", "afectado"
+}
+
+
+def classify_spanish_sentiment(text: str) -> str:
+    tokens = re.findall(r"[a-záéíóúñü]+", text.lower())
+    score = sum(token in SPANISH_POSITIVE for token in tokens) - sum(
+        token in SPANISH_NEGATIVE for token in tokens
+    )
+    if score <= -2:
+        return "Crítico/Muy Negativo"
+    if score < 0:
+        return "Negativo"
+    return "Neutral/Positivo"
+
+
 class MultilingualLinguisticEngine:
-    def __init__(self):
-        # Cargamos ambos modelos para soporte bilingüe
-        print("Cargando modelos lingüísticos (EN/ES)...")
+    def __init__(self) -> None:
+        LOG.info("Loading spaCy language models")
         self.nlp_en = spacy.load("en_core_web_sm")
         self.nlp_es = spacy.load("es_core_news_md")
-        
-        # Inyectamos reglas de entidades financieras de Colombia en ambos modelos
         self._add_colombian_financial_rules(self.nlp_en)
         self._add_colombian_financial_rules(self.nlp_es)
 
-    def _add_colombian_financial_rules(self, nlp):
+    @staticmethod
+    def _add_colombian_financial_rules(nlp: Any) -> None:
         ruler = nlp.add_pipe("entity_ruler", before="ner")
-        
-        # Lista exhaustiva de entidades financieras de Colombia
-        bancos_colombia = [
-            "Bancolombia", "Davivienda", "Banco de Bogotá", "Banco de Occidente", 
-            "Banco Popular", "Banco AV Villas", "Banco Caja Social", "BBVA Colombia", 
-            "Scotiabank Colpatria", "Banco GNB Sudameris", "Banco Itaú", "Banco Agrario", 
-            "Banco Pichincha", "Banco Falabella", "Banco Finandina", "Banco Santander", 
-            "Banco Serfinanza", "Lulo Bank", "Nubank", "Nu Colombia", "RappiPay", "Nequi", "Daviplata"
+        banks = [
+            "Bancolombia", "Davivienda", "Banco de Bogotá", "Banco de Occidente",
+            "Banco Popular", "Banco AV Villas", "Banco Caja Social", "BBVA Colombia",
+            "Scotiabank Colpatria", "Banco GNB Sudameris", "Banco Itaú", "Banco Agrario",
+            "Banco Pichincha", "Banco Falabella", "Banco Finandina", "Banco Santander",
+            "Banco Serfinanza", "Lulo Bank", "Nubank", "Nu Colombia", "RappiPay",
+            "Nequi", "Daviplata",
         ]
-        
-        patterns = []
-        # Reglas para bancos
-        for banco in bancos_colombia:
-            patterns.append({"label": "ORG", "pattern": [{"LOWER": word.lower()} for word in banco.split()]})
-        
-        # Reglas para leyes (FCRA y Ley 1581 de protección de datos)
-        patterns.extend([
-            {"label": "LAW", "pattern": "FCRA"},
-            {"label": "LAW", "pattern": [{"LOWER": "section"}, {"LIKE_NUM": True}]},
-            {"label": "LAW", "pattern": [{"LOWER": "ley"}, {"TEXT": "1581"}]},
-            {"label": "LAW", "pattern": [{"LOWER": "ley"}, {"TEXT": "1266"}]},
-            {"label": "LAW", "pattern": [{"LOWER": "ley"}, {"TEXT": "1564"}]},                
-            {"label": "LAW", "pattern": [{"LOWER": "ley"}, {"TEXT": "1116"}]},
-            {"label": "LAW", "pattern": [{"LOWER": "ley"}, {"TEXT": "2445"}]}
-                ])
-        
+        patterns: list[dict[str, Any]] = [
+            {"label": "ORG", "pattern": [{"LOWER": word.lower()} for word in bank.split()]}
+            for bank in banks
+        ]
+        patterns.extend(
+            [
+                {"label": "LAW", "pattern": "FCRA"},
+                {"label": "LAW", "pattern": [{"LOWER": "section"}, {"LIKE_NUM": True}]},
+            ]
+        )
+        patterns.extend(
+            {"label": "LAW", "pattern": [{"LOWER": "ley"}, {"TEXT": law}]}
+            for law in ["1581", "1266", "1564", "1116", "2445"]
+        )
         ruler.add_patterns(patterns)
 
-    def extract_svo_and_entities(self, text, lang):
-        # Seleccionamos el motor según el idioma detectado
-        nlp = self.nlp_en if lang == 'en' else self.nlp_es
-        doc = nlp(text)
-        
-        svo_list = []
-        entidades = {"ORG": [], "MONEY": [], "LAW": []}
+    def extract_svo_and_entities(self, text: str, language: str) -> tuple[list[dict[str, str]], dict[str, list[str]]]:
+        nlp = self.nlp_en if language == "en" else self.nlp_es
+        document = nlp(text)
+        svo: list[dict[str, str]] = []
+        entities: dict[str, list[str]] = {"ORG": [], "MONEY": [], "LAW": []}
 
-        # Extracción SVO
-        for token in doc:
+        for token in document:
             if token.dep_ == "ROOT":
-                sujeto = [w.text for w in token.lefts if w.dep_ in ("nsubj", "nsubjpass")]
-                objeto = [w.text for w in token.rights if w.dep_ in ("dobj", "pobj", "ccomp")]
-                svo_list.append({
-                    "Sujeto": sujeto[0] if sujeto else "Desconocido",
-                    "Accion": token.lemma_,
-                    "Objeto": objeto[0] if objeto else "Desconocido"
-                })
+                subjects = [word.text for word in token.lefts if word.dep_ in ("nsubj", "nsubjpass")]
+                objects = [
+                    word.text for word in token.rights if word.dep_ in ("dobj", "obj", "pobj", "ccomp")
+                ]
+                svo.append(
+                    {
+                        "Sujeto": subjects[0] if subjects else "Desconocido",
+                        "Accion": token.lemma_,
+                        "Objeto": objects[0] if objects else "Desconocido",
+                    }
+                )
 
-        # Extracción NER
-        for ent in doc.ents:
-            if "XXXX" not in ent.text and ent.label_ in entidades:
-                entidades[ent.label_].append(ent.text)
+        for entity in document.ents:
+            if "XXXX" not in entity.text and entity.label_ in entities:
+                entities[entity.label_].append(entity.text)
 
-        return svo_list, {k: list(set(v)) for k, v in entidades.items()}
+        return svo, {key: sorted(set(values)) for key, values in entities.items()}
+
 
 class SemanticEngine:
-    def __init__(self):
-        # CAMBIO CLAVE: Modelo Multilingüe de SBERT
-        print("Cargando Sentence-Transformer Multilingüe...")
-        self.sbert = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+    def __init__(self) -> None:
+        LOG.info("Loading multilingual sentence-transformer")
+        self.sbert = SentenceTransformer(SENTENCE_MODEL, device="cpu")
         self.vader = SentimentIntensityAnalyzer()
-        self.translator = Translator()
 
-    def vectorize(self, texts):
-        return self.sbert.encode(texts, show_progress_bar=False)
+    def vectorize(self, texts: list[str]) -> np.ndarray:
+        return self.sbert.encode(
+            texts,
+            batch_size=16,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
 
-    def get_sentiment(self, text, lang):
-        # Si es español, traducimos brevemente para una mejor precisión con VADER
-        text_to_analyze = text
-        if lang == 'es':
-            try:
-                translated = self.translator.translate(text, dest='en')
-                text_to_analyze = translated.text
-            except:
-                pass 
+    def get_sentiment(self, text: str, language: str) -> str:
+        if language == "es":
+            return classify_spanish_sentiment(text)
 
-        scores = self.vader.polarity_scores(text_to_analyze)
-        compound = scores['compound']
-        if compound <= -0.2: return "Crítico/Muy Negativo"
-        elif compound < 0: return "Negativo"
-        else: return "Neutral/Positivo"
+        compound = self.vader.polarity_scores(text)["compound"]
+        if compound <= -0.2:
+            return "Crítico/Muy Negativo"
+        if compound < 0:
+            return "Negativo"
+        return "Neutral/Positivo"
+
 
 class ComplaintClassifierPipeline:
-    def __init__(self, data_path):
+    def __init__(self) -> None:
+        if not MODEL_PATH.exists():
+            raise FileNotFoundError(f"Classifier artifact not found: {MODEL_PATH}")
+
         self.linguistic = MultilingualLinguisticEngine()
         self.semantic = SemanticEngine()
-        self.classifier = MLPClassifier(hidden_layer_sizes=(128,), activation='relu', max_iter=500, random_state=42)
-        
-        # Entrenamiento (Se asume carga de modelo pre-entrenado en producción)
-        df = pd.read_csv(data_path).dropna(subset=['Consumer complaint narrative', 'Issue']).head(20000)
-        df['clean_text'] = df['Consumer complaint narrative'].str.replace("XXXX", "[MASK]")
-        X = self.semantic.vectorize(df['clean_text'].tolist())
-        y = df['Issue'].tolist()
-        self.classifier.fit(X, y)
+        self.classifier = joblib.load(MODEL_PATH)
+        self.metadata: dict[str, Any] = {}
+        if MODEL_METADATA_PATH.exists():
+            self.metadata = json.loads(MODEL_METADATA_PATH.read_text(encoding="utf-8"))
 
-    def analyze(self, text):
-        # 1. Detectar idioma
+    def analyze(self, text: str) -> dict[str, Any]:
         try:
-            lang = detect(text)
-            if lang not in ['en', 'es']: lang = 'en'
-        except:
-            lang = 'en'
-            
+            language = detect(text)
+            if language not in {"en", "es"}:
+                language = "en"
+        except Exception:
+            language = "en"
+
         clean_text = text.replace("XXXX", "[MASK]")
-        
-        # 2. Pipeline
-        svos, entidades = self.linguistic.extract_svo_and_entities(clean_text, lang)
+        svo, entities = self.linguistic.extract_svo_and_entities(clean_text, language)
         vector = self.semantic.vectorize([clean_text])
-        sentimiento = self.semantic.get_sentiment(clean_text, lang)
-        
-        # 3. Predicción
-        prediccion = self.classifier.predict(vector)[0]
-        probabilidad = np.max(self.classifier.predict_proba(vector))
+        sentiment = self.semantic.get_sentiment(clean_text, language)
+        prediction = str(self.classifier.predict(vector)[0])
+        confidence = float(np.max(self.classifier.predict_proba(vector)))
+        ANALYSES.labels(language=language, sentiment=sentiment).inc()
 
         return {
-            "idioma_detectado": lang,
+            "idioma_detectado": language,
             "texto_ingresado": text,
-            "analisis_sentimiento": sentimiento,
-            "prediccion_issue": prediccion,
-            "nivel_confianza_porcentaje": round(float(probabilidad) * 100, 2),
-            "estructura_gramatical_svo": svos,
-            "entidades_detectadas": entidades
+            "analisis_sentimiento": sentiment,
+            "prediccion_issue": prediction,
+            "nivel_confianza_porcentaje": round(confidence * 100, 2),
+            "estructura_gramatical_svo": svo,
+            "entidades_detectadas": entities,
         }
 
-# 2. CONFIGURACIÓN DE LA API
-app = FastAPI(title="API Motor de Quejas CFPB Multilingüe", version="2.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+pipeline: ComplaintClassifierPipeline | None = None
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global pipeline
+    started = time.perf_counter()
+    MODEL_READY.set(0)
+    pipeline = ComplaintClassifierPipeline()
+    MODEL_LOAD_SECONDS.set(time.perf_counter() - started)
+    MODEL_READY.set(1)
+    LOG.info("NLP pipeline ready")
+    try:
+        yield
+    finally:
+        MODEL_READY.set(0)
+        pipeline = None
+
+
+app = FastAPI(
+    title="API Motor de Quejas CFPB Multilingüe",
+    version="3.0",
+    lifespan=lifespan,
 )
 
-pipeline = ComplaintClassifierPipeline("muestra_nlp_limpia.csv")
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials="*" not in allowed_origins,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+)
 
-class Reclamo(BaseModel):
-    texto: str
 
-@app.post("/api/analizar")
-def procesar_queja(reclamo: Reclamo):
-    return pipeline.analyze(reclamo.texto)
-    
+@app.middleware("http")
+async def observe_requests(request: Request, call_next):
+    started = time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        route = request.scope.get("route")
+        path = getattr(route, "path", request.url.path)
+        REQUESTS.labels(request.method, path, str(status_code)).inc()
+        REQUEST_DURATION.labels(request.method, path).observe(time.perf_counter() - started)
+
+
+class Complaint(BaseModel):
+    texto: str = Field(min_length=5, max_length=5000)
+
+
+@app.get("/health/live", tags=["health"])
+def liveness() -> dict[str, str]:
+    return {"status": "alive"}
+
+
+@app.get("/health/ready", tags=["health"])
+def readiness() -> dict[str, str]:
+    if pipeline is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="model not ready")
+    return {"status": "ready"}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.post("/api/analizar", tags=["analysis"])
+def analyze_complaint(complaint: Complaint) -> dict[str, Any]:
+    if pipeline is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="model not ready")
+    try:
+        return pipeline.analyze(complaint.texto)
+    except Exception as exc:
+        LOG.exception("Complaint analysis failed")
+        raise HTTPException(status_code=500, detail="analysis failed") from exc

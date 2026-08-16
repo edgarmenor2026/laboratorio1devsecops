@@ -1,45 +1,176 @@
-name: CI/CD DevSecOps Pipeline
+name: CI DevSecOps
 
 on:
+  pull_request:
+    branches: [main]
   push:
-    branches: [ "main" ]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.10"
+  GCP_PROJECT_ID: laboratorio1devsecops
+  GAR_REGION: us-central1
+  GAR_REPOSITORY: repo-nlp
+  IMAGE_NAME: mi-app-nlp
 
 jobs:
-  security-and-build:
+  validate-and-scan:
+    name: Validate, SonarQube Cloud and Snyk
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-    - name: Checkout del código
-      uses: actions/checkout@v3
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-    - name: Configurar Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
 
-    - name: Instalar dependencias
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install application and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-cov
+          python -m pip check
 
-    # 1. Análisis Estático con SonarQube
-    - name: SonarQube Scan
-      uses: SonarSource/sonarcloud-github-action@master
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }} 
-        # Nota: Deberás configurar SONAR_TOKEN en los Secrets de tu repo en GitHub
+      - name: Validate Python syntax
+        run: python -m compileall -q app.py train_model.py tests
 
-    # 2. Escaneo de Vulnerabilidades con Snyk
-    - name: Run Snyk to check for vulnerabilities
-      uses: snyk/actions/python@master
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        # Nota: Deberás configurar SNYK_TOKEN en los Secrets de tu repo en GitHub
-      with:
-        command: monitor
+      - name: Run unit tests with coverage
+        run: >
+          pytest -q
+          --cov=app
+          --cov=train_model
+          --cov-report=xml
+          --cov-report=term-missing
+          --cov-fail-under=80
 
-    # 3. Construcción de la imagen Docker
-    - name: Build Docker Image
-      run: |
-        docker build -t mi-app-nlp:${{ github.sha }} .
+      - name: SonarQube Cloud scan and Quality Gate
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
+
+      - name: Snyk Open Source scan
+        id: snyk
+        continue-on-error: true
+        uses: snyk/actions/python@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+          args: >
+            --file=requirements.txt
+            --package-manager=pip
+            --severity-threshold=high
+          json: true
+
+      - name: Upload Snyk report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: snyk-open-source-report
+          path: snyk.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Enforce Snyk security gate
+        if: steps.snyk.outcome == 'failure'
+        run: |
+          echo "Snyk found a high/critical vulnerability or the scan failed."
+          exit 1
+
+  build-and-push:
+    name: Build and publish immutable image
+    if: github.event_name != 'pull_request'
+    needs: validate-and-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      image: ${{ steps.image.outputs.uri }}
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud with Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Log in to Artifact Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.GAR_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Calculate image URI
+        id: image
+        shell: bash
+        run: |
+          IMAGE_URI="${GAR_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_NAME}"
+          echo "uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "${GITHUB_SHA}" > image-tag.txt
+          echo "${IMAGE_URI}:${GITHUB_SHA}" > image-uri.txt
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.uri }}:${{ github.sha }}
+            ${{ steps.image.outputs.uri }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+      - name: Publish deployment metadata
+        run: |
+          printf 'image=%s\ndigest=%s\ncommit=%s\n' \
+            "${{ steps.image.outputs.uri }}:${{ github.sha }}" \
+            "${{ steps.build.outputs.digest }}" \
+            "${{ github.sha }}" > deployment-metadata.txt
+
+      - name: Upload image tag for Jenkins
+        uses: actions/upload-artifact@v7
+        with:
+          name: deployment-metadata
+          path: |
+            image-tag.txt
+            image-uri.txt
+            deployment-metadata.txt
+          retention-days: 30

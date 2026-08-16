@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nlp-app
+  namespace: devsecops
+  labels:
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - devsecops
+  selector:
+    matchLabels:
+      app: nlp-app
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

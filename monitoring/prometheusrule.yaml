@@ -1,0 +1,27 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nlp-app-alerts
+  namespace: devsecops
+  labels:
+    release: monitoring
+spec:
+  groups:
+    - name: nlp-app.rules
+      rules:
+        - alert: NlpAppUnavailable
+          expr: kube_deployment_status_replicas_available{namespace="devsecops",deployment="nlp-app-deployment"} < 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: NLP application has no available replicas
+            description: The deployment nlp-app-deployment has had zero available replicas for five minutes.
+        - alert: NlpAppRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="devsecops",container="nlp-app-container"}[15m]) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: NLP application is restarting repeatedly
+            description: The NLP container restarted more than twice during the last 15 minutes.

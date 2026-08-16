@@ -1,0 +1,16 @@
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.venv/
+venv/
+.env
+.gcloud/
+model/
+kubeconfig.yaml
+kubeconfig-*.yaml
+muestra_nlp_limpia.csv
+Aplicacion.zip
+.coverage
+coverage.xml
+htmlcov/
+snyk.json
