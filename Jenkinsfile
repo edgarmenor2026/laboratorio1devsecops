@@ -17,41 +17,18 @@ pipeline {
         
     stage('Deploy to Kubernetes') {
         steps {
-            withCredentials([file(credentialsId: 'k8s-credentials', variable: 'KUBECONFIG')]) {
-                sh '''
-                    echo "--- 1. Instalando kubectl ---"
-                    curl -LO "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
-                    chmod +x kubectl
-                    mkdir -p ~/.local/bin
-                    mv kubectl ~/.local/bin/
+            sh '''
+                echo "--- 1. Instalando kubectl (Ligero, sin saturar la RAM) ---"
+                curl -LO "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
+                chmod +x kubectl
+                mkdir -p ~/.local/bin
+                mv kubectl ~/.local/bin/
+                export PATH=$PATH:~/.local/bin/
     
-                    echo "--- 2. Descargando Google Cloud SDK Base ---"
-                    curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz
-                    tar -xzf google-cloud-cli-linux-x86_64.tar.gz
-                    
-                    echo "--- 3. SOLUCIÓN DE RAÍZ: Liberando 100MB inmediatamente ---"
-                    # Al borrar el comprimido original evitamos superar el límite de 1GB (1Gi)
-                    rm google-cloud-cli-linux-x86_64.tar.gz 
-    
-                    echo "--- 4. Descargando e instalando el plugin gke-auth-plugin ---"
-                    ./google-cloud-sdk/bin/gcloud components install gke-gcloud-auth-plugin --quiet
-    
-                    echo "--- 5. Limpiando cachés y organizando el sistema ---"
-                    # Borramos los archivos residuales de la instalación de Google
-                    rm -rf ./google-cloud-sdk/.install/.backup
-                    
-                    # Movemos el SDK listo a la carpeta del usuario
-                    mkdir -p ~/.local
-                    rm -rf ~/.local/google-cloud-sdk
-                    mv google-cloud-sdk ~/.local/
-                    
-                    # Configuramos la ruta para que Jenkins encuentre los comandos
-                    export PATH=$PATH:~/.local/bin:~/.local/google-cloud-sdk/bin
-    
-                    echo "--- 6. Desplegando en el Clúster de Kubernetes ---"
-                    kubectl apply -f k8s/deployment.yaml
-                '''
-            }
+                echo "--- 2. Desplegando en Kubernetes de forma nativa ---"
+                # Al estar dentro del clúster, kubectl se autentica automáticamente sin kubeconfig
+                kubectl apply -f k8s/deployment.yaml
+            '''
         }
     }        
     stage('Verify Deployment') {
