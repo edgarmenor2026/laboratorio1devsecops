@@ -5,7 +5,7 @@ metadata:
   labels:
     app: nlp-app
 spec:
-  replicas: 2 # Desplegará 2 instancias de tu app para alta disponibilidad
+  replicas: 2
   selector:
     matchLabels:
       app: nlp-app
@@ -16,14 +16,13 @@ spec:
     spec:
       containers:
       - name: nlp-app-container
-        image: mi-app-nlp:latest # Aquí Jenkins o K8s inyectará tu imagen construida
+        image: us-central1-docker.pkg.dev/laboratorio1devsecops/repo-nlp/mi-app-nlp:latest
         ports:
-        - containerPort: 5000 # Cambia al puerto que use tu app.py (ej. 8000 para FastAPI)
+        - containerPort: 5000
         resources:
-          # Esto es clave para que Prometheus y Grafana monitoreen adecuadamente:
           requests:
-            memory: "256Mi"
             cpu: "200m"
+            memory: "256Mi"
           limits:
-            memory: "512Mi"
             cpu: "500m"
+            memory: "512Mi"
