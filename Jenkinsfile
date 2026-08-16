@@ -15,32 +15,33 @@ pipeline {
             }
         }
         
-    stage('Deploy to Kubernetes') {
-        steps {
-            sh '''
-                echo "--- 1. Instalando kubectl (Ligero, sin saturar la RAM) ---"
-                curl -LO "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
-                chmod +x kubectl
-                mkdir -p ~/.local/bin
-                mv kubectl ~/.local/bin/
-                export PATH=$PATH:~/.local/bin/
+        stage('Deploy to Kubernetes') {
+            steps {
+                sh '''
+                    echo "--- 1. Instalando kubectl (Ligero, sin saturar la RAM) ---"
+                    curl -LO "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
+                    chmod +x kubectl
+                    mkdir -p ~/.local/bin
+                    mv kubectl ~/.local/bin/
+                    export PATH=$PATH:~/.local/bin/
 
-                echo "--- 2. Desplegando en Kubernetes de forma nativa ---"
-                # Al estar dentro del clúster, kubectl se autentica automáticamente sin kubeconfig
-                kubectl apply -f k8s/deployment.yaml
-            '''
-        }
-    }        
-    stage('Verify Deployment') {
-        steps {
-            sh '''
-                echo "--- 3. Verificando el estado del despliegue ---"
-                    
-                # Volvemos a declarar la ruta en esta nueva etapa para que encuentre kubectl
-                export PATH=$PATH:~/.local/bin/
-                    
-                 kubectl rollout status deployment/nlp-app-deployment
-            '''
+                    echo "--- 2. Desplegando en Kubernetes de forma nativa ---"
+                    # Al estar dentro del clúster, kubectl se autentica automáticamente sin kubeconfig
+                    kubectl apply -f k8s/deployment.yaml
+                '''
+            }
+        }        
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    echo "--- 3. Verificando el estado del despliegue ---"
+
+                    # Volvemos a declarar la ruta en esta nueva etapa para que encuentre kubectl
+                    export PATH=$PATH:~/.local/bin/
+
+                     kubectl rollout status deployment/nlp-app-deployment
+                '''
+            }
         }
     }
 }
