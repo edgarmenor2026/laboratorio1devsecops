@@ -16,30 +16,36 @@ pipeline {
         stage('Build & Push Docker Image') {
             steps {
                 sh '''
-                echo "--- 1. Configurando Python local para el instalador de gcloud ---"
+                echo "--- 1. Limpieza preventiva de espacio en disco ---"
+                docker system prune -f --all || true
+
+                echo "--- 2. Configurando Python local para el instalador de gcloud ---"
                 mkdir -p /home/jenkins/.local/bin
                 if ! command -v python &> /dev/null && command -v python3 &> /dev/null; then
                     ln -sf $(which python3) /home/jenkins/.local/bin/python
                 fi
                 export PATH=/home/jenkins/.local/bin:$PATH
                 
-                echo "--- 2. Instalando gcloud CLI si no está presente ---"
-                    if ! command -v gcloud &> /dev/null; then
-                        curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts
-                    fi
+                echo "--- 3. Instalando gcloud CLI si no está presente ---"
+                if ! command -v gcloud &> /dev/null; then
+                    curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts
+                fi
                 
                 # Añadir gcloud al PATH de la sesión actual
                 export PATH=$PATH:/home/jenkins/google-cloud-sdk/bin                
                 
-                echo "--- 3. Configurando Docker para Google Artifact Registry ---"
+                echo "--- 4. Configurando Docker para Google Artifact Registry ---"
                 gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
                 
-                echo "--- 4. Construyendo la imagen de Docker ---"
+                echo "--- 5. Construyendo la imagen de Docker ---"
                 export IMAGE_TAG="us-central1-docker.pkg.dev/laboratorio1devsecops/repo-nlp/mi-app-nlp:latest"
                 docker build -t $IMAGE_TAG .
                 
-                echo "--- 5. Subiendo la imagen al repositorio ---"
+                echo "--- 6. Subiendo la imagen al repositorio ---"
                 docker push $IMAGE_TAG
+
+                echo "--- 7. Limpieza posterior para liberar almacenamiento efímero ---"
+                docker system prune -f --all                
                 '''
             }
         }
@@ -66,7 +72,7 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh '''
-                echo "--- 3. Verificando el estado del despliegue ---"
+                echo "--- Verificando el estado del despliegue ---"
                 export PATH=/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/jenkins/.local/bin/
 
                 # Intentar verificar el rollout. Si falla, ejecutar comandos de debug.
