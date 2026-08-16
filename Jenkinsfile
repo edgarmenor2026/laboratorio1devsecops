@@ -4,8 +4,6 @@ pipeline {
     environment {
         // Variables de entorno para el clúster
         DOCKER_IMAGE = "mi-app-nlp:latest"
-        // Este ID debe coincidir con la credencial de tu kubeconfig en Jenkins
-        KUBECONFIG_ID = 'k8s-credentials' 
     }
     
     stages {
@@ -26,20 +24,17 @@ pipeline {
                     export PATH=$PATH:~/.local/bin/
 
                     echo "--- 2. Desplegando en Kubernetes de forma nativa ---"
-                    # Al estar dentro del clúster, kubectl se autentica automáticamente sin kubeconfig
                     kubectl apply -f k8s/deployment.yaml
                 '''
             }
-        }        
+        }
+        
         stage('Verify Deployment') {
             steps {
                 sh '''
                     echo "--- 3. Verificando el estado del despliegue ---"
-
-                    # Volvemos a declarar la ruta en esta nueva etapa para que encuentre kubectl
                     export PATH=$PATH:~/.local/bin/
-
-                     kubectl rollout status deployment/nlp-app-deployment
+                    kubectl rollout status deployment/nlp-app-deployment
                 '''
             }
         }
