@@ -1,0 +1,34 @@
+# Configuración de kube-prometheus-stack compatible con GKE Autopilot.
+#
+# Autopilot administra el plano de control y los nodos, por lo que se
+# desactivan componentes que intentan acceder a kube-system o al host.
+
+nodeExporter:
+  enabled: false
+
+coreDns:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeEtcd:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeProxy:
+  enabled: false
+
+# Evita reglas y alertas que dependerían de targets deshabilitados.
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeProxy: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    node: false
+    nodeExporterAlerting: false
+    nodeExporterRecording: false
