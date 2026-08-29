@@ -1,13 +1,46 @@
 grafana:
   defaultDashboardsTimezone: America/Bogota
+
+  replicas: 1
+
+  # Un PVC ReadWriteOnce no debe montarse simultáneamente
+  # en el pod antiguo y en el nuevo durante un rolling update.
+  deploymentStrategy:
+    type: Recreate
+    rollingUpdate: null
+
+  # Credenciales administradas fuera del chart.
+  admin:
+    existingSecret: grafana-admin-credentials
+    userKey: admin-user
+    passwordKey: admin-password
+
+  # Base SQLite, usuarios, sesiones y cambios de UI persistentes.
+  persistence:
+    enabled: true
+    type: pvc
+    storageClassName: standard-rwo
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+
   service:
     type: ClusterIP
+
   sidecar:
     dashboards:
       enabled: true
       searchNamespace: ALL
+
     datasources:
       uid: prometheus
+
+  grafana.ini:
+    users:
+      allow_sign_up: false
+    auth.anonymous:
+      enabled: false
+
   resources:
     requests:
       cpu: 100m
@@ -15,22 +48,27 @@ grafana:
     limits:
       cpu: 500m
       memory: 512Mi
+
 prometheus:
   prometheusSpec:
     retention: 7d
+
     serviceMonitorNamespaceSelector: {}
     serviceMonitorSelector: {}
     ruleNamespaceSelector: {}
     ruleSelector: {}
+
     resources:
       requests:
         cpu: 300m
         memory: 1Gi
       limits:
-        cpu: '1'
+        cpu: "1"
         memory: 2Gi
+
 alertmanager:
   enabled: true
+
   alertmanagerSpec:
     resources:
       requests:

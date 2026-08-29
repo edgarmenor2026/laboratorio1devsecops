@@ -7,4 +7,482 @@ metadata:
     grafana_dashboard: "1"
 data:
   nlp-devsecops.json: |-
-    {"annotations":{"list":[]},"editable":true,"fiscalYearStartMonth":0,"graphTooltip":0,"id":null,"links":[],"liveNow":false,"panels":[{"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"reqps"},"overrides":[]},"gridPos":{"h":8,"w":8,"x":0,"y":0},"id":1,"options":{"legend":{"displayMode":"list","placement":"bottom"}},"targets":[{"expr":"sum(rate(nlp_http_requests_total[5m]))","legendFormat":"requests/s","refId":"A"}],"title":"Request rate","type":"timeseries"},{"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"s"},"overrides":[]},"gridPos":{"h":8,"w":8,"x":8,"y":0},"id":2,"options":{"legend":{"displayMode":"list","placement":"bottom"}},"targets":[{"expr":"histogram_quantile(0.95, sum by (le) (rate(nlp_http_request_duration_seconds_bucket[5m])))","legendFormat":"p95","refId":"A"}],"title":"HTTP p95 latency","type":"timeseries"},{"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"short"},"overrides":[]},"gridPos":{"h":8,"w":8,"x":16,"y":0},"id":3,"options":{"reduceOptions":{"calcs":["lastNotNull"],"fields":"","values":false}},"targets":[{"expr":"max(nlp_model_ready)","legendFormat":"ready","refId":"A"}],"title":"Model ready (1=yes)","type":"stat"},{"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"cores"},"overrides":[]},"gridPos":{"h":8,"w":12,"x":0,"y":8},"id":4,"options":{"legend":{"displayMode":"list","placement":"bottom"}},"targets":[{"expr":"sum(rate(container_cpu_usage_seconds_total{namespace=\"devsecops\",container=\"nlp-app-container\"}[5m]))","legendFormat":"CPU","refId":"A"}],"title":"Application CPU","type":"timeseries"},{"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"bytes"},"overrides":[]},"gridPos":{"h":8,"w":12,"x":12,"y":8},"id":5,"options":{"legend":{"displayMode":"list","placement":"bottom"}},"targets":[{"expr":"sum(container_memory_working_set_bytes{namespace=\"devsecops\",container=\"nlp-app-container\"})","legendFormat":"memory","refId":"A"}],"title":"Application memory","type":"timeseries"},{"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"reqps"},"overrides":[]},"gridPos":{"h":8,"w":12,"x":0,"y":16},"id":6,"options":{"legend":{"displayMode":"list","placement":"bottom"}},"targets":[{"expr":"sum(rate(nlp_http_requests_total{status=~\"5..\"}[5m]))","legendFormat":"5xx/s","refId":"A"}],"title":"HTTP 5xx rate","type":"timeseries"},{"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"short"},"overrides":[]},"gridPos":{"h":8,"w":12,"x":12,"y":16},"id":7,"options":{"legend":{"displayMode":"table","placement":"bottom"}},"targets":[{"expr":"sum by (language, sentiment) (increase(nlp_analyses_total[1h]))","legendFormat":"{{language}} / {{sentiment}}","refId":"A"}],"title":"Analyses in the last hour","type":"timeseries"},{"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"short"},"overrides":[]},"gridPos":{"h":8,"w":12,"x":0,"y":24},"id":8,"options":{"reduceOptions":{"calcs":["lastNotNull"],"fields":"","values":false}},"targets":[{"expr":"kube_deployment_status_replicas_available{namespace=\"devsecops\",deployment=\"nlp-app-deployment\"}","legendFormat":"available","refId":"A"}],"title":"Available replicas","type":"stat"},{"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"short"},"overrides":[]},"gridPos":{"h":8,"w":12,"x":12,"y":24},"id":9,"options":{"legend":{"displayMode":"list","placement":"bottom"}},"targets":[{"expr":"sum(increase(kube_pod_container_status_restarts_total{namespace=\"devsecops\",container=\"nlp-app-container\"}[1h]))","legendFormat":"restarts / hour","refId":"A"}],"title":"Container restarts in the last hour","type":"timeseries"}],"refresh":"30s","schemaVersion":39,"tags":["devsecops","nlp"],"templating":{"list":[]},"time":{"from":"now-1h","to":"now"},"timezone":"browser","title":"NLP Application - DevSecOps","uid":"nlp-devsecops","version":2}
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(nlp_http_requests_total{namespace=\"devsecops\"}[5m]))",
+              "legendFormat": "requests/s",
+              "refId": "A"
+            }
+          ],
+          "title": "Request rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 0
+          },
+          "id": 2,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(nlp_http_request_duration_seconds_bucket{namespace=\"devsecops\"}[5m])))",
+              "legendFormat": "p95",
+              "refId": "A"
+            }
+          ],
+          "title": "HTTP p95 latency",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "NOT READY",
+                      "color": "red"
+                    },
+                    "1": {
+                      "text": "READY",
+                      "color": "green"
+                    }
+                  }
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 0
+          },
+          "id": 3,
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "max(nlp_model_ready{namespace=\"devsecops\"})",
+              "legendFormat": "ready",
+              "refId": "A"
+            }
+          ],
+          "title": "Model ready (1=yes)",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "cores"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          },
+          "id": 4,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(process_cpu_seconds_total{namespace=\"devsecops\"}[5m]))",
+              "legendFormat": "CPU cores",
+              "refId": "A"
+            }
+          ],
+          "title": "Application process CPU",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          },
+          "id": 5,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(process_resident_memory_bytes{namespace=\"devsecops\"})",
+              "legendFormat": "resident memory",
+              "refId": "A"
+            }
+          ],
+          "title": "Application process memory",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 16
+          },
+          "id": 6,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(nlp_http_requests_total{namespace=\"devsecops\",status=~\"5..\"}[5m])) or vector(0)",
+              "legendFormat": "5xx/s",
+              "refId": "A"
+            }
+          ],
+          "title": "HTTP 5xx rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 16
+          },
+          "id": 7,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (language, sentiment) (increase(nlp_analyses_total{namespace=\"devsecops\"}[1h]))",
+              "legendFormat": "{{language}} / {{sentiment}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Analyses in the last hour",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 24
+          },
+          "id": 8,
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          },
+          "targets": [
+            {
+              "expr": "max(kube_deployment_status_replicas_available{namespace=\"devsecops\",deployment=\"nlp-app-deployment\"})",
+              "legendFormat": "available",
+              "refId": "A"
+            }
+          ],
+          "title": "Available replicas",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 24
+          },
+          "id": 9,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto",
+            "wideLayout": true
+          },
+          "targets": [
+            {
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"devsecops\",container=\"nlp-app-container\"}[1h])) or vector(0)",
+              "legendFormat": "restarts / hour",
+              "refId": "A"
+            }
+          ],
+          "title": "Container restarts in the last hour",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 24
+          },
+          "id": 10,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto",
+            "wideLayout": true
+          },
+          "targets": [
+            {
+              "expr": "sum(kube_pod_status_ready{namespace=\"devsecops\",pod=~\"nlp-app-deployment-.*\",condition=\"true\"} == 1)",
+              "legendFormat": "ready pods",
+              "refId": "A"
+            }
+          ],
+          "title": "Pods ready",
+          "type": "stat"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": [
+        "devsecops",
+        "nlp"
+      ],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-15m",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "title": "NLP Application - DevSecOps",
+      "uid": "nlp-devsecops",
+      "version": 3,
+      "description": "Dashboard DevSecOps para la aplicación NLP. En GKE Autopilot, CPU y memoria se obtienen del proceso principal de la aplicación mediante prometheus_client."
+    }
